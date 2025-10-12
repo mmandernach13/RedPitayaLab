@@ -166,16 +166,14 @@ if __name__ == '__main__':
     rp = RedPitaya()
 
     run_params= {
-        'test_freq': 1000,
-        'test_amp': 0.2,
+        'test_freq': 100,
+        'test_amp': 0.4,
         'noise_freq': 10000,
-        'noise_amp': 0.05,
-        'ref_freq': 3000,
-        'ref_amp': 0.2
+        'noise_amp': 0.1,
+        'ref_freq': 100,
+        'ref_amp': 0.4
     }
 
-    for f in range(1000, 6000, 1000):
-        run_params['test_freq'] = f
-        rp.run(run_params, save_file=False)
+    rp.run(run_params, save_file=False)
 
 
