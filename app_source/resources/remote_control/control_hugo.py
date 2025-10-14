@@ -982,7 +982,7 @@ class red_pitaya_app():
         self.log('start_streaming():'+log)
 
         self.file   = open(fn,'a')
-        self.stream = subprocess.Popen( 'nc -l 6000'.split(' ') , shell=False , stdin=subprocess.PIPE , stdout=self.file , stderr=subprocess.PIPE)
+        self.stream = subprocess.Popen( [r"C:\Program Files (x86)\Nmap\ncat.exe", '-l', '6000'] , shell=False , stdin=subprocess.PIPE , stdout=self.file , stderr=subprocess.PIPE)
         #subprocess.Popen('nc -d -l 6000 > '+name, shell=True)
         #cmd='/root/py/data_dump.py -s '+ip+' -p 6000 --params '+' '.join(signals)
 
