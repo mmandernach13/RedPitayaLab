@@ -26,6 +26,8 @@ class RedPitaya:
 
         self.rp_modules = self.rp.rp
         self.lockin = self.rp_modules.iq2
+        self.ref_sig = self.rp_modules.asg0
+        self.ref_start_t = 0.0
         self.lockin_X = []
         self.lockin_Y = []
 
@@ -42,14 +44,23 @@ class RedPitaya:
         self.scope.average = 'true'
         self.sample_rate = 125e6/self.scope.decimation
 
-    def setup_lockin(self, **params):
+    def setup_lockin(self, output_ref=False, **params):
         self.ref_freq = params['ref_freq']
         ref_amp = params['ref_amp']
+
+        self.ref_sig.setup(waveform='sin',
+                           amplitude=ref_amp,
+                           frequency=self.ref_freq)
+
+        self.ref_start_t = time.time_ns()
+
+        if hasattr(params, 'output_ref'):
+            self.ref_sig.output_direct = params['output_ref']
 
         self.lockin.setup(frequency=self.ref_freq,
                        bandwidth=[-self.ref_freq * 2, -self.ref_freq, self.ref_freq, self.ref_freq * 2],  # Hz
                        gain=1.0,
-                       phase=0,
+                       phase=(time.time_ns() - self.ref_start_t)*self.ref_freq*1e9*360,       #initial phase is in degrees (delta t[ns])-> delta t [s]/(1/f) * 360
                        acbandwidth=0,
                        amplitude=ref_amp,
                        input='in1',
@@ -114,8 +125,9 @@ class RedPitaya:
         timeout = run_params['timeout']
         loop_f = run_params['loop_f']
 
+        self.setup_lockin(params)
+
         if lock:
-            self.setup_lockin(params)
             self.setup_pid(params)
         time.sleep(0.01)
 
