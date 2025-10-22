@@ -25,44 +25,29 @@ class RedPitaya:
         self.output_dir = output_dir
 
         self.rp_modules = self.rp.rp
-        self.lia_scope = self.rp_modules.scope
-        self.lia_scope.input1 = 'iq2'
-        self.lia_scope.input2 = 'iq2_2'
-        self.lia_scope.decimation = 8192
-        self.lia_scope._start_acquisition_rolling_mode()
-        self.lia_scope.average = 'true'
-        self.sample_rate = 125e6/self.lia_scope.decimation
+        self.lockin = self.rp_modules.iq2
+        self.lockin_X = []
+        self.lockin_Y = []
 
+        self.pid = self.rp_modules.pid0
+        self.kp = self.pid.p
+        self.ki = self.pid.i
+        self.ival = self.pid.ival
+        self.ival = 0
 
-        self.iq2 = self.rp_modules.iq2
+        self.scope = self.rp_modules.scope
+        self.scope.input1 = 'iq2'
+        self.scope.input2 = 'iq2_2'
+        self.scope.decimation = 1
+        self.scope._start_acquisition_rolling_mode()
+        self.scope.average = 'true'
+        self.sample_rate = 125e6/self.scope.decimation
 
-    def setup_test_sig(self, params):
-        test_freq = params['test_freq']
-        test_amp = params['test_amp']
-        noise_freq = params['noise_freq']
-        noise_amp = params['noise_amp']
-
-        self.test_sig = self.rp_modules.asg0
-        self.test_noise = self.rp_modules.asg1
-
-        self.test_sig.setup(waveform='sin',
-                            frequency=test_freq,
-                            amplitude=test_amp,
-                            offset=0.00,
-                            output_direct='out1',
-                            trigger_source='immediately')
-        self.test_noise.setup(waveform='sin',
-                              frequency=noise_freq,
-                              amplitude=noise_amp,
-                              offset=0.00,
-                              output_direct='out1',
-                              trigger_source='immediately')
-
-    def setup_lockin(self, params):
+    def setup_lockin(self, **params):
         self.ref_freq = params['ref_freq']
         ref_amp = params['ref_amp']
 
-        self.iq2.setup(frequency=self.ref_freq,
+        self.lockin.setup(frequency=self.ref_freq,
                        bandwidth=[-self.ref_freq * 2, -self.ref_freq, self.ref_freq, self.ref_freq * 2],  # Hz
                        gain=1.0,
                        phase=0,
@@ -73,77 +58,70 @@ class RedPitaya:
                        output_signal='quadrature',
                        quadrature_factor=20)
 
-    def capture(self):
-        self.lia_scope.single()
-        ch1 = np.array(self.lia_scope._data_ch1_current)
-        ch2 = np.array(self.lia_scope._data_ch2_current)
+    def setup_pid(self, **params):
+        self.pid.setpoint = params['setpoint']
+        self.kp = params['kp']
+        self.ki = params['ki']
+
+    def capture_lockin(self):
+        """
+        captures a self.scope.decimation length capture and appends them to the X and Y arrays
+        :return:
+        """
+        self.scope.single()
+        ch1 = np.array(self.scope._data_ch1_current)
+        ch2 = np.array(self.scope._data_ch2_current)
+
+        if self.scope.input1 == 'iq2' and self.scope.input2 == 'iq2_2':
+            self.lockin_X.append(ch1)
+            self.lockin_Y.append(ch2)
+
         return ch1, ch2
 
     def see_fft(self, save_file=False):
-        # --- Capture input (e.g. in2) ---
-        self.lia_scope.input1 = 'in2'
-        self.lia_scope.single()
-        data_in = np.array(self.lia_scope._data_ch1_current)
-        N = len(data_in)
-        freqs = np.fft.rfftfreq(N, 1 / self.sample_rate)
-        fft_in = np.fft.rfft(data_in * np.hanning(N))
-        psd_in = (np.abs(fft_in) ** 2) / (self.sample_rate * N)
-
-        # --- Capture lock-in outputs (X = iq2.i, Y = iq2.q) ---
-        self.lia_scope.input1 = 'iq2'
-        time.sleep(0.01)
-        X, Y = self.capture()
-
-        # Combine into magnitude
-        iq = X + 1j*Y
-        N_lock = len(iq)
-        win = np.hanning(N)
+        iq = self.lockin_X + 1j*self.lockin_Y
+        n_pts = len(iq)
+        win = np.hanning(n_pts)
         IQwin = iq * win
         IQfft = np.fft.fftshift(np.fft.fft(IQwin))
-        freqs_lock = np.fft.fftshift(np.fft.fftfreq(N_lock, 1.0 / self.sample_rate))
+        freqs_lock = np.fft.fftshift(np.fft.fftfreq(n_pts, 1.0 / self.sample_rate))
         psd_lock = (np.abs(IQfft) ** 2) / (self.sample_rate * np.sum(win ** 2))
 
         idx = np.argmax(psd_lock)  # PSD computed as above
-        print("Peak at", freqs[idx], "Hz   (expected difference =", abs(self.test_freq - self.ref_freq), "Hz)")
-        # --- Plot ---
-        fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+        print("Peak at", freqs_lock[idx], "Hz")
 
-        ax[0].semilogy(freqs, psd_in, label='Input IN2')
-        ax[0].axvline(self.ref_freq, color='orange', linestyle='--', label='Reference')
-        ax[0].set_xlabel('Frequency (Hz)')
-        ax[0].set_ylabel('Power (a.u.)')
-        ax[0].set_title('Input Signal Spectrum')
-        ax[0].legend()
-        ax[0].grid(True)
+        plt.figure(1, figsize=(12, 4))
 
-        ax[1].semilogy(freqs_lock, psd_lock, label='Lock-in R')
-        ax[1].set_xlabel('Frequency (Hz)')
-        ax[1].set_ylabel('Power (a.u.)')
-        ax[1].set_title('Lock-in Output Spectrum (baseband)')
-        ax[1].legend()
-        ax[1].grid(True)
+        plt.semilogy(freqs_lock, psd_lock, label='Lock-in R')
+        plt.xlabel('Frequency (Hz)')
+        plt.ylabel('Power (a.u.)')
+        plt.title('Lock-in Output Spectrum (baseband)')
+        plt.legend()
+        plt.grid(True)
 
         plt.tight_layout()
         if save_file:
             if not os.path.exists(self.output_dir):
                 os.makedirs(self.output_dir)
 
-            path = os.path.join(self.output_dir, f'lockin_FFT_tf_{self.test_freq}_rf_{self.ref_freq}_w_noise.png')
+            path = os.path.join(self.output_dir, f'lockin_FFT_rf_{self.ref_freq}.png')
             plt.savefig(path)
         else:
             plt.show()
 
-    def run(self, params, save_file=False, test=True, fft=True):
-        if test:
-            self.test_freq = params['test_freq']
-            self.setup_test_sig(params)
-        self.setup_lockin(params)
+    def run(self, params, lock=True, save_file=False, fft=True):
+        timeout = run_params['timeout']
+        loop_f = run_params['loop_f']
+
+        if lock:
+            self.setup_lockin(params)
+            self.setup_pid(params)
         time.sleep(0.01)
 
         if fft:
             self.see_fft(save_file=save_file)
         else:
-            X, Y = self.capture()
+            X, Y = self.capture_lockin()
             t = np.arange(start=0, stop=len(X)/self.sample_rate, step=1/self.sample_rate)
             plt.plot(t, X)
             plt.plot(t, Y)
@@ -155,7 +133,7 @@ class RedPitaya:
                 if not os.path.exists(self.output_dir):
                     os.makedirs(self.output_dir)
 
-                path = os.path.join(self.output_dir, f'lockin_results_tf_{self.test_freq}_rf_{self.ref_freq}_w_noise.png')
+                path = os.path.join(self.output_dir, f'lockin_results_rf_{self.ref_freq}.png')
                 plt.savefig(path)
             else:
                 plt.show()
