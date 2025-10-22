@@ -33,7 +33,6 @@ class RedPitaya:
         self.kp = self.pid.p
         self.ki = self.pid.i
         self.ival = self.pid.ival
-        self.ival = 0
 
         self.scope = self.rp_modules.scope
         self.scope.input1 = 'iq2'
@@ -59,9 +58,11 @@ class RedPitaya:
                        quadrature_factor=20)
 
     def setup_pid(self, **params):
+        self.pid.input = params['pid_in']
         self.pid.setpoint = params['setpoint']
         self.kp = params['kp']
         self.ki = params['ki']
+        self.ival = 0
 
     def capture_lockin(self):
         """
