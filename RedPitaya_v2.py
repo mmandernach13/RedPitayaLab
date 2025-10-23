@@ -40,7 +40,7 @@ class RedPitaya:
         self.scope = self.rp_modules.scope
         self.scope.input1 = 'iq2'
         self.scope.input2 = 'iq2_2'
-        self.scope.decimation = 1
+        self.scope.decimation = 8192
         self.scope._start_acquisition_rolling_mode()
         self.scope.average = 'true'
         self.sample_rate = 125e6/self.scope.decimation
@@ -68,9 +68,9 @@ class RedPitaya:
                        acbandwidth=0,
                        amplitude=ref_amp,
                        input='in1',
-                       output_direct='off',
+                       output_direct='out2',
                        output_signal='output_direct',
-                       quadrature_factor=1)
+                       quadrature_factor=10)
 
     def setup_pid(self, params):
         self.pid.input = 'iq2'
@@ -80,22 +80,10 @@ class RedPitaya:
         self.ki = params['ki']
         self.ival = 0
 
-    def get_ref_phase(self):
-        delta_t = (time.time() - self.ref_start_t)
-        num_periods = delta_t/(1/self.ref_freq)
-        partial = num_periods % 1.0
-        return partial
-
-    def get_pid_output(self):
-        self.scope.input1 = self.pid.output_direct
-        output = np.array(self.scope._data_ch1_current)
-        self.scope.input1 = 'iq2'
-        return output[-1] / 360
-
-    def get_current_lia_phase(self):
-        last_Y = self.lockin_Y[-1]
-        last_X = self.lockin_X[-1]
-        return math.atan(np.mean(last_Y)/np.mean(last_X))
+    def set_lia_phase(self):
+        pid_out = self.scope.voltage_out1
+        print(pid_out)
+        self.lockin.phase = pid_out/360.0
 
     def capture_lockin(self):
         """
@@ -113,7 +101,7 @@ class RedPitaya:
         return ch1, ch2
 
     def see_fft(self, save_file=False):
-        iq = self.lockin_X + 1j*self.lockin_Y
+        iq = self.all_X + 1j*self.all_Y
         n_pts = len(iq)
         win = np.hanning(n_pts)
         IQwin = iq * win
@@ -160,22 +148,27 @@ class RedPitaya:
 
         while (time.time() - loop_start) < timeout:
             self.capture_lockin()
-            ref_theta.append(self.get_ref_phase())
-            lia_theta.append(self.get_current_lia_phase())
+            self.set_lia_phase()
+            # ref_theta.append(self.get_ref_phase())
+            # lia_theta.append(self.get_current_lia_phase())
             # self.lockin.phase = self.get_pid_output()
             time.sleep(1/loop_f)
 
+        self.all_X = np.array(np.concatenate(self.lockin_X))
+        self.all_Y = np.array(np.concatenate(self.lockin_Y))
         if params['fft']:
             self.see_fft(save_file=params['save_file'])
         else:
-            X, Y = np.concatenate(self.lockin_X), np.concatenate(self.lockin_Y)
+            X, Y = self.all_X, self.all_Y
+            R = np.sqrt(X**2 + Y**2)
+            Theta = np.arctan(Y, X)
             t = np.arange(start=0, stop=len(X)/self.sample_rate, step=1/self.sample_rate)
-            plt.plot(t, X)
-            plt.plot(t, Y)
+            plt.plot(t, R)
+            plt.plot(t, Theta)
             plt.title('Lockin Results')
             plt.xlabel('Time (s)')
-            plt.ylabel('X and Y outputs')
-            plt.legend(['X', 'Y'])
+            plt.ylabel('R and Theta')
+            plt.legend(['R', 'Theta'])
             # plt.plot(ref_theta)
             # plt.plot(lia_theta)
             # plt.legend(['ref_theta', 'lia_theta'])
@@ -208,14 +201,9 @@ if __name__ == '__main__':
         'timeout': 5.0,     # seconds, how long to run acquisition loop
         'loop_f': rp.sample_rate/10,       # Hz, how often to capture data in run loop
 
-        'test_freq': 100,           # Hz, used for test or calibration runs
-        'test_amp': 0.4,            # V, amplitude of test waveform
-        'noise_freq': 10000,        # Hz, optional noise injection frequency
-        'noise_amp': 0.1,           # V, optional noise amplitude
-
         'output_dir': 'test_data',  # where to save FFT and waveform plots
         'save_file': False,         # whether to save plots instead of showing them
-        'fft': False,               # whether to perform FFT after run
+        'fft': True,               # whether to perform FFT after run
     }
 
     rp.run(run_params)
