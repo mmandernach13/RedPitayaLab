@@ -20,6 +20,7 @@ class RedPitaya:
     current_range_map = {'10uA': (False, True, True, True), '100uA': (True, False, True, True), '1mA': (True, True, False, True), '10mA': (True, True, True, False)}
     dac_gain_map = {'1X': (False, False), '5X': (False, True), '2X': (True, False), '10X': (True, True)}
     current_scaling_map = {'10mA': 65, '1mA': 600, '100uA': 6000, '10uA': 60000}
+    allowed_decimations = [1, 8, 64, 1024, 8192, 65536]
 
     def __init__(self, output_dir='test_data'):
         self.rp = Pyrpl(config='lockin_config', hostname='169.254.131.37')
@@ -42,7 +43,12 @@ class RedPitaya:
         self.scope = self.rp_modules.scope
         self.scope.input1 = 'iq2'
         self.scope.input2 = 'iq2_2'
-        self.scope.decimation = 8192
+        self.scope.decimation = 64
+
+        if self.scope.decimation not in self.allowed_decimations:
+            print('Invalid decimation')
+            exit()
+
         self.scope._start_acquisition_rolling_mode()
         self.scope.average = 'true'
         self.sample_rate = 125e6/self.scope.decimation
