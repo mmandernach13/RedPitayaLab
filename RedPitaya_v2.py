@@ -30,7 +30,9 @@ class RedPitaya:
         self.ref_sig = self.rp_modules.asg0
         self.ref_start_t = 0.0
         self.lockin_X = []
+        self.all_X = []
         self.lockin_Y = []
+        self.all_Y = []
 
         self.pid = self.rp_modules.pid0
         self.kp = self.pid.p
@@ -72,19 +74,6 @@ class RedPitaya:
                        output_signal='output_direct',
                        quadrature_factor=10)
 
-    def setup_pid(self, params):
-        self.pid.input = 'iq2'
-        self.pid.output_direct = 'out1'
-        self.pid.setpoint = params['setpoint']
-        self.kp = params['kp']
-        self.ki = params['ki']
-        self.ival = 0
-
-    def set_lia_phase(self):
-        pid_out = self.scope.voltage_out1
-        print(pid_out)
-        self.lockin.phase = pid_out/360.0
-
     def capture_lockin(self):
         """
         captures a self.scope.decimation length capture and appends them to the X and Y arrays
@@ -100,7 +89,7 @@ class RedPitaya:
 
         return ch1, ch2
 
-    def see_fft(self, save_file=False):
+    def see_fft(self):
         iq = self.all_X + 1j*self.all_Y
         n_pts = len(iq)
         win = np.hanning(n_pts)
@@ -122,66 +111,46 @@ class RedPitaya:
         plt.grid(True)
 
         plt.tight_layout()
-        if save_file:
-            if not os.path.exists(self.output_dir):
-                os.makedirs(self.output_dir)
-
-            path = os.path.join(self.output_dir, f'lockin_FFT_rf_{self.ref_freq}.png')
-            plt.savefig(path)
-        else:
-            plt.show()
 
     def run(self, params):
         timeout = run_params['timeout']
-        loop_f = run_params['loop_f']
 
         self.setup_lockin(params)
-
-        if params['lock']:
-            self.setup_pid(params)
         time.sleep(0.01)
 
-
         loop_start = time.time()
-        ref_theta = []
-        lia_theta = []
 
         while (time.time() - loop_start) < timeout:
             self.capture_lockin()
-            self.set_lia_phase()
-            # ref_theta.append(self.get_ref_phase())
-            # lia_theta.append(self.get_current_lia_phase())
-            # self.lockin.phase = self.get_pid_output()
-            time.sleep(1/loop_f)
 
         self.all_X = np.array(np.concatenate(self.lockin_X))
         self.all_Y = np.array(np.concatenate(self.lockin_Y))
+        R = np.sqrt(self.all_X ** 2 + self.all_Y ** 2)
+        Theta = np.arctan(self.all_Y, self.all_X)
+
         if params['fft']:
-            self.see_fft(save_file=params['save_file'])
+            self.see_fft()
         else:
-            X, Y = self.all_X, self.all_Y
-            R = np.sqrt(X**2 + Y**2)
-            Theta = np.arctan(Y, X)
-            t = np.arange(start=0, stop=len(X)/self.sample_rate, step=1/self.sample_rate)
+            t = np.arange(start=0, stop=len(self.all_X)/self.sample_rate, step=1/self.sample_rate)
             plt.plot(t, R)
             plt.plot(t, Theta)
             plt.title('Lockin Results')
             plt.xlabel('Time (s)')
             plt.ylabel('R and Theta')
             plt.legend(['R', 'Theta'])
-            # plt.plot(ref_theta)
-            # plt.plot(lia_theta)
-            # plt.legend(['ref_theta', 'lia_theta'])
-            # plt.grid(True)
 
-            if params['save_file']:
-                if not os.path.exists(self.output_dir):
-                    os.makedirs(self.output_dir)
+        if params['save_file']:
+            if not os.path.exists(self.output_dir):
+                os.makedirs(self.output_dir)
 
-                path = os.path.join(self.output_dir, f'lockin_results_rf_{self.ref_freq}.png')
-                plt.savefig(path)
-            else:
-                plt.show()
+            img_path = os.path.join(self.output_dir, f'lockin_results_rf_{self.ref_freq}.png')
+            data = np.column_stack((R, Theta))
+            # Save to CSV
+            csv_path = os.path.join(self.output_dir, f'lockin_results_rf_{self.ref_freq}.csv')
+            np.savetxt(csv_path, data, delimiter=",", header="R,Theta", comments='', fmt='%d')
+            plt.savefig(img_path)
+        else:
+            plt.show()
 
 
 if __name__ == '__main__':
@@ -193,13 +162,7 @@ if __name__ == '__main__':
         'ref_amp': 0.4,        # V, amplitude of reference signal
         'output_ref': 'out1',  # where to output the ref_signal
 
-        'setpoint': 0.0,    # target setpoint for PID
-        'kp': 1.0,          # proportional gain
-        'ki': 0.1,          # integral gain
-
-        'lock': False,       # whether or not to phase lock
         'timeout': 5.0,     # seconds, how long to run acquisition loop
-        'loop_f': rp.sample_rate/10,       # Hz, how often to capture data in run loop
 
         'output_dir': 'test_data',  # where to save FFT and waveform plots
         'save_file': False,         # whether to save plots instead of showing them
