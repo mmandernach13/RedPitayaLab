@@ -191,13 +191,13 @@ if __name__ == '__main__':
     run_params = {
         'ref_freq': 100,       # Hz, reference signal frequency for lock-in
         'ref_amp': 0.4,        # V, amplitude of reference signal
-        'output_ref': '',  # where to output the ref_signal
+        'output_ref': 'out1',  # where to output the ref_signal
 
         'setpoint': 0.0,    # target setpoint for PID
         'kp': 1.0,          # proportional gain
         'ki': 0.1,          # integral gain
 
-        'lock': True,       # whether or not to phase lock
+        'lock': False,       # whether or not to phase lock
         'timeout': 5.0,     # seconds, how long to run acquisition loop
         'loop_f': rp.sample_rate/10,       # Hz, how often to capture data in run loop
 
