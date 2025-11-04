@@ -164,15 +164,15 @@ if __name__ == '__main__':
     rp = RedPitaya()
 
     run_params = {
-        'ref_freq': 100,       # Hz, reference signal frequency for lock-in
-        'ref_amp': 0.4,        # V, amplitude of reference signal
-        'output_ref': 'out1',  # where to output the ref_signal
+        'ref_freq': 100,            # Hz, reference signal frequency for lock-in
+        'ref_amp': 0.4,             # V, amplitude of reference signal
+        'output_ref': 'out1',       # where to output the ref_signal
 
-        'timeout': 5.0,     # seconds, how long to run acquisition loop
+        'timeout': 5.0,             # seconds, how long to run acquisition loop
 
         'output_dir': 'test_data',  # where to save FFT and waveform plots
         'save_file': False,         # whether to save plots instead of showing them
-        'fft': True,               # whether to perform FFT after run
+        'fft': True,                # whether to perform FFT after run
     }
 
     rp.run(run_params)
